@@ -181,6 +181,7 @@ export async function makeQuiz(req, { text, image, level, count }) {
         throw e;
       }
       const quiz = clean(data, count);
+      console.log(`Model ${model} answered in ${Date.now() - started} ms, ${quiz ? quiz.questions.length : 0} good questions`);
       if (quiz) return { ...quiz, model };
       lastError = new Error("The AI's answer couldn't be read. Please try again.");
     } catch (e) {
@@ -204,6 +205,23 @@ export default async function handler(req, res) {
 
   try {
     if (req.method === "GET") {
+      // Quick AI check: /api/quiz?ping=1 (tiny request to each model, reports speed)
+      if (req.query?.ping === "1") {
+        const auth = authFor(req);
+        if (!auth) return res.status(200).json({ ai: false });
+        const out = [];
+        for (const model of auth.models) {
+          const t0 = Date.now();
+          try {
+            const txt = await callModel({ url: auth.url, token: auth.token, model, timeoutMs: 14_000,
+              messages: [{ role: "user", content: "Reply with the single word OK." }] });
+            out.push({ model, ok: true, ms: Date.now() - t0, reply: txt.slice(0, 20) });
+          } catch (e) {
+            out.push({ model, ok: false, ms: Date.now() - t0, status: e.status, error: String(e.message).slice(0, 160) });
+          }
+        }
+        return res.status(200).json({ ai: true, results: out });
+      }
       // Health check and a built-in demo: /api/quiz?sample=1
       if (req.query?.sample !== "1") {
         return res.status(200).json({ ok: true, ai: Boolean(authFor(req)) });
