@@ -1,0 +1,25 @@
+Copyright (c) 2026 P Om Shiva
+M.Tech CSE (2nd year), Pondicherry University
+All rights reserved.
+
+Notes2Quiz (the source code, design, text, screenshots, video and all other
+files in this repository, together "the Software") is the original work of
+P Om Shiva and is protected by copyright law.
+
+NO PERMISSION IS GRANTED to copy, reproduce, modify, merge, publish, distribute,
+sublicense, sell, deploy, host, or create derivative works from the Software, in
+whole or in part, for any purpose, without the prior written permission of the
+author. Submitting this project, or any part of it, as your own work (for
+example in a resume, college project, hackathon or portfolio) is not allowed.
+
+The Software may be viewed on GitHub and used through the official live app
+for personal learning only.
+
+For permission requests, contact the author through
+https://github.com/omshiva24.
+
+Third-party parts keep their own licences and are not covered by this notice:
+fonts in fonts/ (SIL Open Font License, see the OFL files there) and pdf.js in
+vendor/ (Apache License 2.0, see vendor/LICENSE-pdfjs.txt).
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.

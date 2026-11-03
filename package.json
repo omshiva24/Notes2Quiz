@@ -1,0 +1,10 @@
+{
+  "name": "notes2quiz",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Notes2Quiz turns a student's own notes into an exam-style quiz. Built by P Om Shiva.",
+  "author": "P Om Shiva (https://github.com/omshiva24)",
+  "license": "UNLICENSED",
+  "type": "module",
+  "engines": { "node": ">=20" }
+}

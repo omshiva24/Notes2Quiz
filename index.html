@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Notes2Quiz — turn your notes into a quiz</title>
+  <meta name="description" content="Paste your notes, upload a PDF or snap a photo, and get an exam-style quiz from your own notes in seconds. Free, no sign-up. Built by P Om Shiva, M.Tech CSE, Pondicherry University.">
+  <meta name="author" content="P Om Shiva">
+  <meta name="copyright" content="© 2026 P Om Shiva. All rights reserved.">
+  <meta property="og:title" content="Notes2Quiz — turn your notes into a quiz">
+  <meta property="og:description" content="Free AI quiz maker for students. Built by P Om Shiva, M.Tech CSE, Pondicherry University.">
+  <meta name="theme-color" content="#14213D">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="preload" href="fonts/BricolageGrotesque.ttf" as="font" type="font/ttf" crossorigin>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to the quiz maker</a>
+
+  <header class="top">
+    <a class="brand" href="./" aria-label="Notes2Quiz home">
+      <svg class="brand-mark" viewBox="0 0 40 40" aria-hidden="true"><rect x="3" y="3" width="34" height="34" rx="9" fill="#14213D"/><circle cx="14" cy="15" r="4.5" fill="none" stroke="#FFE45C" stroke-width="2.6"/><circle cx="26" cy="15" r="4.5" fill="#FFE45C"/><circle cx="14" cy="27" r="4.5" fill="none" stroke="#FFE45C" stroke-width="2.6"/><circle cx="26" cy="27" r="4.5" fill="none" stroke="#FFE45C" stroke-width="2.6"/></svg>
+      <span>Notes<b>2</b>Quiz</span>
+    </a>
+    <a class="top-link" href="#why">Why I built this</a>
+  </header>
+
+  <main id="main">
+    <!-- Home: input -->
+    <section class="view" id="view-home" aria-labelledby="home-title">
+      <div class="hero">
+        <h1 id="home-title">Turn your notes into a quiz.</h1>
+        <p class="lede">Paste your notes, upload a PDF, or snap a photo. Get exam-style questions made only from <em>your</em> notes — in seconds.</p>
+      </div>
+
+      <form class="sheet" id="quiz-form" novalidate>
+        <div class="tabs" role="tablist" aria-label="How to add your notes">
+          <button type="button" role="tab" class="tab" id="tab-text" aria-selected="true" aria-controls="panel-text">Paste text</button>
+          <button type="button" role="tab" class="tab" id="tab-pdf" aria-selected="false" aria-controls="panel-pdf">Upload PDF</button>
+          <button type="button" role="tab" class="tab" id="tab-photo" aria-selected="false" aria-controls="panel-photo">Photo of notes</button>
+        </div>
+
+        <div class="panel" id="panel-text" role="tabpanel" aria-labelledby="tab-text">
+          <label class="sr" for="notes">Your notes</label>
+          <textarea id="notes" rows="11" placeholder="Paste a page or two of your class notes here…"></textarea>
+          <div class="panel-foot">
+            <button type="button" class="link-btn" id="use-sample">Try with sample notes</button>
+            <span class="count" id="char-count" aria-live="polite">0 characters</span>
+          </div>
+        </div>
+
+        <div class="panel" id="panel-pdf" role="tabpanel" aria-labelledby="tab-pdf" hidden>
+          <label class="drop" for="pdf-input">
+            <input type="file" id="pdf-input" accept="application/pdf">
+            <span class="drop-title">Choose a PDF of your notes</span>
+            <span class="drop-sub">Text PDFs work best. Up to 30 pages are read.</span>
+          </label>
+          <p class="file-status" id="pdf-status" aria-live="polite"></p>
+        </div>
+
+        <div class="panel" id="panel-photo" role="tabpanel" aria-labelledby="tab-photo" hidden>
+          <label class="drop" for="photo-input">
+            <input type="file" id="photo-input" accept="image/*" capture="environment">
+            <span class="drop-title">Take or choose a photo of your notes</span>
+            <span class="drop-sub">Hold the page flat, in good light. Handwriting is fine if it's clear.</span>
+          </label>
+          <img id="photo-preview" alt="Preview of your notes photo" hidden>
+          <p class="file-status" id="photo-status" aria-live="polite"></p>
+        </div>
+
+        <fieldset class="options">
+          <legend class="sr">Quiz settings</legend>
+          <div class="seg" role="radiogroup" aria-label="Difficulty">
+            <span class="seg-label" id="lvl-label">Difficulty</span>
+            <label><input type="radio" name="level" value="easy"><span>Easy</span></label>
+            <label><input type="radio" name="level" value="medium" checked><span>Medium</span></label>
+            <label><input type="radio" name="level" value="hard"><span>Hard</span></label>
+          </div>
+          <div class="seg" role="radiogroup" aria-label="Number of questions">
+            <span class="seg-label">Questions</span>
+            <label><input type="radio" name="count" value="5"><span>5</span></label>
+            <label><input type="radio" name="count" value="10" checked><span>10</span></label>
+            <label><input type="radio" name="count" value="15"><span>15</span></label>
+          </div>
+          <label class="check"><input type="checkbox" id="timer-on" checked><span>30-second timer per question</span></label>
+        </fieldset>
+
+        <p class="form-error" id="form-error" role="alert" hidden></p>
+        <button type="submit" class="primary" id="make-btn">Make my quiz</button>
+      </form>
+
+      <ol class="steps" aria-label="How it works">
+        <li><b>Add your notes.</b> Text, PDF or a photo — whatever you study from.</li>
+        <li><b>AI writes the questions.</b> Only from your notes, never from outside.</li>
+        <li><b>See what to revise.</b> Your score, plus the exact topics you missed.</li>
+      </ol>
+    </section>
+
+    <!-- Loading -->
+    <section class="view" id="view-loading" hidden aria-live="polite">
+      <div class="loading">
+        <div class="pencil" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+        <p class="loading-text" id="loading-text">Reading your notes…</p>
+      </div>
+    </section>
+
+    <!-- Quiz -->
+    <section class="view" id="view-quiz" hidden aria-labelledby="q-text">
+      <div class="quiz-head">
+        <p class="q-title" id="quiz-title"></p>
+        <div class="q-meta">
+          <span id="q-count">Question 1 of 10</span>
+          <span class="timer" id="timer" aria-label="Time left"><svg viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="15" class="t-bg"/><circle cx="18" cy="18" r="15" class="t-fg" id="timer-ring"/></svg><b id="timer-num">30</b></span>
+        </div>
+        <div class="bar" aria-hidden="true"><span id="bar-fill"></span></div>
+      </div>
+
+      <div class="qcard">
+        <h2 class="q-text" id="q-text"></h2>
+        <ul class="answers" id="answers" role="list"></ul>
+        <div class="feedback" id="feedback" role="status" aria-live="polite" hidden></div>
+      </div>
+      <div class="quiz-actions">
+        <button class="ghost" id="quit-btn" type="button">End quiz</button>
+        <button class="primary" id="next-btn" type="button" hidden>Next question</button>
+      </div>
+    </section>
+
+    <!-- Results -->
+    <section class="view" id="view-results" hidden aria-labelledby="score-line">
+      <div class="score-wrap">
+        <svg class="pen-circle" viewBox="0 0 260 150" aria-hidden="true"><path d="M30 78 C 28 30, 120 12, 190 24 C 250 34, 250 112, 170 128 C 95 142, 22 124, 34 70 C 40 48, 70 34, 98 30" fill="none" stroke="#C8372D" stroke-width="5" stroke-linecap="round"/></svg>
+        <p class="score" id="score-line"><span id="score-num">0</span><span class="score-of">/<span id="score-total">10</span></span></p>
+      </div>
+      <p class="verdict" id="verdict"></p>
+
+      <div class="revise" id="revise-box">
+        <h2>Revise these topics</h2>
+        <ul id="revise-list"></ul>
+      </div>
+
+      <details class="review" id="review-box">
+        <summary>See the questions you missed</summary>
+        <ol id="review-list"></ol>
+      </details>
+
+      <div class="result-actions">
+        <button class="primary" id="retake-btn" type="button">Retake this quiz</button>
+        <button class="ghost" id="new-btn" type="button">Use new notes</button>
+        <button class="ghost" id="share-btn" type="button">Copy my score</button>
+      </div>
+      <p class="share-status" id="share-status" aria-live="polite"></p>
+    </section>
+
+    <!-- Why -->
+    <section class="why" id="why" aria-labelledby="why-title">
+      <h2 id="why-title">Why I built this</h2>
+      <p>Every exam season I saw the same thing. Friends read the same notes again and again, felt ready, and then went blank in the exam hall. Reading feels like studying. <strong>Testing yourself is what makes it stick.</strong></p>
+      <p>Most students don't have a teacher to quiz them the night before an exam. So I built one that every student can use — free, no sign-up, made from their own notes. A student in a small-town college should be able to practise exactly like a topper in a big city.</p>
+      <p>If this helps even one student walk into the exam hall confident, it was worth building.</p>
+      <div class="maker">
+        <div class="maker-badge" aria-hidden="true">OS</div>
+        <div>
+          <p class="maker-name">P Om Shiva</p>
+          <p class="maker-role">M.Tech CSE (2nd year), Pondicherry University</p>
+          <p class="maker-links"><a href="https://github.com/omshiva24" rel="noopener">GitHub</a> <a href="https://youtube.com/@techvibe24" rel="noopener">YouTube: TechVibe24</a></p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <p>Notes2Quiz is designed and built by <strong>P Om Shiva</strong>, M.Tech CSE (2nd year), Pondicherry University.</p>
+    <p>© 2026 P Om Shiva. All rights reserved. Copying, reusing or republishing this app, its design or its code without written permission is not allowed.</p>
+    <p class="foot-small">AI can make mistakes. Always check answers against your textbook.</p>
+  </footer>
+
+  <script src="vendor/pdf.min.js" defer></script>
+  <script src="app.js" defer></script>
+</body>
+</html>
