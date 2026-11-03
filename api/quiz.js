@@ -148,7 +148,7 @@ async function callGemini({ token, model, messages, timeoutMs }) {
     return m ? { inline_data: { mime_type: m[1], data: m[2] } } : { text: "" };
   });
   const generationConfig = { temperature: 0.4, responseMimeType: system ? "application/json" : "text/plain" };
-  if (/^gemini-3/.test(model)) generationConfig.thinkingConfig = { thinkingLevel: "low" };
+  if (/^gemini-3/.test(model)) generationConfig.thinkingConfig = { thinkingLevel: /lite/.test(model) ? "minimal" : "low" };
   const body = { contents: [{ role: "user", parts }], generationConfig };
   if (system) body.systemInstruction = { parts: [{ text: system }] };
   const ctrl = new AbortController();
@@ -168,6 +168,10 @@ async function callGemini({ token, model, messages, timeoutMs }) {
     clearTimeout(timer);
   }
   const data = await r.json().catch(() => ({}));
+  if (!r.ok && r.status === 400 && generationConfig.thinkingConfig && /thinking/i.test(data?.error?.message || "")) {
+    delete generationConfig.thinkingConfig; // this model doesn't accept that thinking level
+    return callGemini({ token, model, messages, timeoutMs });
+  }
   if (!r.ok) {
     const err = new Error(data?.error?.message || `AI service error ${r.status}`);
     err.status = r.status;
@@ -186,41 +190,47 @@ function authFor(req) {
   return token ? { url: GATEWAY_URL, token, models: MODELS } : null;
 }
 
-export async function makeQuiz(req, { text, image, level, count }) {
-  const auth = authFor(req);
-  if (!auth) {
-    const e = new Error("The AI service isn't connected yet. Please try again later.");
-    e.status = 503;
-    throw e;
+// Split long notes into k parts of similar size (by paragraph, then by sentence).
+function splitNotes(text, k) {
+  let units = text.split(/\n\s*\n/).map((x) => x.trim()).filter(Boolean);
+  if (units.length < k) units = text.split(/(?<=[.!?])\s+/).filter(Boolean);
+  const target = text.length / k;
+  const parts = [];
+  let cur = "";
+  for (const u of units) {
+    if (cur && cur.length + u.length > target && parts.length < k - 1) { parts.push(cur); cur = u; }
+    else cur = cur ? `${cur}\n\n${u}` : u;
   }
+  if (cur) parts.push(cur);
+  return parts;
+}
+
+// One AI request for n questions, trying each model until one answers in time.
+async function askBatch(auth, { text, image, level, n, deadline }) {
   const userContent = [];
-  const intro = `Difficulty: ${level}. Number of questions: ${count}.`;
+  const intro = `Difficulty: ${level}. Number of questions: ${n}.`;
   if (text) userContent.push({ type: "text", text: `${intro}\n\nSTUDENT NOTES:\n${text}` });
   if (image) {
     if (!text) userContent.push({ type: "text", text: `${intro}\n\nThe student's notes are in this photo. Read them carefully and quiz only on what is written.` });
     userContent.push({ type: "image_url", image_url: { url: image } });
   }
-  const messages = [
-    { role: "system", content: systemPrompt(count, level) },
-    { role: "user", content: userContent },
-  ];
-
+  const messages = [{ role: "system", content: systemPrompt(n, level) }, { role: "user", content: userContent }];
   let lastError;
-  const started = Date.now();
   for (const model of auth.models) {
-    const left = 55_000 - (Date.now() - started);
+    const left = deadline - Date.now();
     if (left < 8_000) break;
+    const t0 = Date.now();
     try {
       const call = auth.native ? callGemini : callModel;
-      const content = await call({ url: auth.url, token: auth.token, model, messages, timeoutMs: Math.min(32_000, left - 2_000) });
+      const content = await call({ url: auth.url, token: auth.token, model, messages, timeoutMs: Math.min(45_000, left - 2_000) });
       const data = parseJson(content);
       if (data?.error === "not_enough_notes") {
         const e = new Error("These notes are too short to make a good quiz. Add a page or two more.");
         e.status = 422;
         throw e;
       }
-      const quiz = clean(data, count);
-      console.log(`Model ${model} answered in ${Date.now() - started} ms, ${quiz ? quiz.questions.length : 0} good questions`);
+      const quiz = clean(data, n);
+      console.log(`Model ${model}: ${quiz ? quiz.questions.length : 0}/${n} good questions in ${Date.now() - t0} ms`);
       if (quiz) return { ...quiz, model };
       lastError = new Error("The AI's answer couldn't be read. Please try again.");
     } catch (e) {
@@ -231,11 +241,40 @@ export async function makeQuiz(req, { text, image, level, count }) {
         err.status = 503;
         throw err;
       }
-      console.error(`Model ${model} failed (${e.status || "?"}): ${e.message}`);
+      console.error(`Model ${model} failed (${e.status || "?"}) after ${Date.now() - t0} ms: ${e.message}`);
       lastError = e; // try the next model
     }
   }
   throw lastError || new Error("Couldn't make a quiz right now. Please try again.");
+}
+
+export async function makeQuiz(req, { text, image, level, count }) {
+  const auth = authFor(req);
+  if (!auth) {
+    const e = new Error("The AI service isn't connected yet. Please try again later.");
+    e.status = 503;
+    throw e;
+  }
+  const deadline = Date.now() + 80_000;
+  // Photos (or short notes) go in one request. Longer notes are split so batches of 5 run in parallel.
+  const k = image || text.length < 900 ? 1 : Math.min(3, Math.ceil(count / 5));
+  if (k === 1) return askBatch(auth, { text, image, level, n: count, deadline });
+
+  const parts = splitNotes(text, k);
+  const sizes = parts.map((_, i) => Math.floor(count / parts.length) + (i < count % parts.length ? 1 : 0));
+  const results = await Promise.allSettled(parts.map((part, i) => askBatch(auth, { text: part, level, n: sizes[i], deadline })));
+  const ok = results.filter((r) => r.status === "fulfilled").map((r) => r.value);
+  const seen = new Set();
+  const questions = [];
+  for (const q of ok.flatMap((r) => r.questions)) {
+    const key = q.question.toLowerCase();
+    if (!seen.has(key)) { seen.add(key); questions.push(q); }
+  }
+  if (questions.length < 3) {
+    const failed = results.find((r) => r.status === "rejected");
+    throw failed ? failed.reason : new Error("Couldn't make a quiz right now. Please try again.");
+  }
+  return { title: ok[0].title, questions: questions.slice(0, count), model: ok[0].model };
 }
 
 export default async function handler(req, res) {
