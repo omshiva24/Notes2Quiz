@@ -183,7 +183,7 @@ async function callGemini({ token, model, messages, timeoutMs }) {
 function authFor(req) {
   if (process.env.GEMINI_API_KEY) {
     return { native: true, token: process.env.GEMINI_API_KEY,
-      models: (process.env.GEMINI_MODELS || "gemini-3.1-flash-lite,gemini-3.8-flash").split(",").map((m) => m.trim()) };
+      models: (process.env.GEMINI_MODELS || "gemini-3.1-flash-lite,gemini-3.5-flash-lite,gemini-3.7-flash,gemini-3.8-flash").split(",").map((m) => m.trim()) };
   }
   const token = process.env.AI_GATEWAY_API_KEY ||
     req.headers["x-vercel-oidc-token"] || process.env.VERCEL_OIDC_TOKEN;
@@ -216,7 +216,10 @@ async function askBatch(auth, { text, image, level, n, deadline }) {
   }
   const messages = [{ role: "system", content: systemPrompt(n, level) }, { role: "user", content: userContent }];
   let lastError;
-  for (const model of auth.models) {
+  const attempts = auth.models.flatMap((m) => [m, m]); // a "busy" model gets one more try
+  let skip = null;
+  for (const model of attempts) {
+    if (model === skip) continue;
     const left = deadline - Date.now();
     if (left < 8_000) break;
     const t0 = Date.now();
@@ -242,7 +245,13 @@ async function askBatch(auth, { text, image, level, n, deadline }) {
         throw err;
       }
       console.error(`Model ${model} failed (${e.status || "?"}) after ${Date.now() - t0} ms: ${e.message}`);
-      lastError = e; // try the next model
+      if (e.status === 503 || e.status === 429) {
+        await new Promise((ok) => setTimeout(ok, 1200));
+        e.message = "Google's AI is very busy right now. Please try again in a minute.";
+      } else {
+        skip = model; // not a busy error: don't retry this model
+      }
+      lastError = e;
     }
   }
   throw lastError || new Error("Couldn't make a quiz right now. Please try again.");
