@@ -8,6 +8,12 @@ Paste your notes, upload a PDF or snap a photo. Notes2Quiz writes multiple-choic
 > © 2026 **P Om Shiva** — M.Tech CSE (2nd year), Pondicherry University. **All rights reserved.**
 > This code is shared so it can be seen, not copied. Copying, reusing, deploying or submitting it as your own work without my written permission is not allowed. See [LICENSE](LICENSE).
 
+<p>
+  <img src="docs/01-home.png" width="250" alt="Notes2Quiz home screen: paste notes, upload a PDF or take a photo">
+  <img src="docs/02-question.png" width="250" alt="A quiz question with the right answer and a one-line reason">
+  <img src="docs/03-results.png" width="250" alt="Score with a Revise these topics list">
+</p>
+
 ---
 
 ## Why I built this
