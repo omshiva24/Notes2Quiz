@@ -110,12 +110,25 @@ function clean(data, count) {
     : null;
 }
 
-async function callModel({ url, token, model, messages }) {
-  const r = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ model, messages, temperature: 0.4 }),
-  });
+async function callModel({ url, token, model, messages, timeoutMs }) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  let r;
+  try {
+    r = await fetch(url, {
+      method: "POST",
+      signal: ctrl.signal,
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      // Quizzes need speed more than deep reasoning, so keep "thinking" low.
+      body: JSON.stringify({ model, messages, temperature: 0.4, reasoning_effort: "low" }),
+    });
+  } catch (e) {
+    const err = new Error(e.name === "AbortError" ? `${model} took too long` : `Network error: ${e.message}`);
+    err.status = 504;
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
   const body = await r.json().catch(() => ({}));
   if (!r.ok) {
     const err = new Error(body?.error?.message || `AI service error ${r.status}`);
@@ -155,9 +168,12 @@ export async function makeQuiz(req, { text, image, level, count }) {
   ];
 
   let lastError;
+  const started = Date.now();
   for (const model of auth.models) {
+    const left = 55_000 - (Date.now() - started);
+    if (left < 8_000) break;
     try {
-      const content = await callModel({ url: auth.url, token: auth.token, model, messages });
+      const content = await callModel({ url: auth.url, token: auth.token, model, messages, timeoutMs: Math.min(32_000, left - 2_000) });
       const data = parseJson(content);
       if (data?.error === "not_enough_notes") {
         const e = new Error("These notes are too short to make a good quiz. Add a page or two more.");
@@ -175,6 +191,7 @@ export async function makeQuiz(req, { text, image, level, count }) {
         err.status = 503;
         throw err;
       }
+      console.error(`Model ${model} failed (${e.status || "?"}): ${e.message}`);
       lastError = e; // try the next model
     }
   }
