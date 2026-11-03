@@ -128,7 +128,7 @@ async function callModel({ url, token, model, messages }) {
 function authFor(req) {
   if (process.env.GEMINI_API_KEY) {
     return { url: GEMINI_URL, token: process.env.GEMINI_API_KEY,
-      models: (process.env.GEMINI_MODELS || "gemini-2.5-flash,gemini-2.5-flash-lite").split(",").map((m) => m.trim()) };
+      models: (process.env.GEMINI_MODELS || "gemini-3.8-flash,gemini-3.1-flash-lite,gemini-2.5-flash").split(",").map((m) => m.trim()) };
   }
   const token = process.env.AI_GATEWAY_API_KEY ||
     req.headers["x-vercel-oidc-token"] || process.env.VERCEL_OIDC_TOKEN;
