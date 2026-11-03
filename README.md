@@ -3,7 +3,7 @@
 **Turn your own notes into an exam-style quiz — in seconds.**
 Paste your notes, upload a PDF or snap a photo. Notes2Quiz writes multiple-choice questions only from what you studied, checks every answer, and tells you exactly which topics to revise.
 
-**Live app:** _link added after deployment_
+**Live app:** [notes2quiz.vercel.app](https://notes2quiz.vercel.app)
 
 > © 2026 **P Om Shiva** — M.Tech CSE (2nd year), Pondicherry University. **All rights reserved.**
 > This code is shared so it can be seen, not copied. Copying, reusing, deploying or submitting it as your own work without my written permission is not allowed. See [LICENSE](LICENSE).

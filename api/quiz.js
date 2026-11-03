@@ -127,7 +127,8 @@ async function callModel({ url, token, model, messages }) {
 
 function authFor(req) {
   if (process.env.GEMINI_API_KEY) {
-    return { url: GEMINI_URL, token: process.env.GEMINI_API_KEY, models: ["gemini-2.5-flash"] };
+    return { url: GEMINI_URL, token: process.env.GEMINI_API_KEY,
+      models: (process.env.GEMINI_MODELS || "gemini-2.5-flash,gemini-2.5-flash-lite").split(",").map((m) => m.trim()) };
   }
   const token = process.env.AI_GATEWAY_API_KEY ||
     req.headers["x-vercel-oidc-token"] || process.env.VERCEL_OIDC_TOKEN;
@@ -167,7 +168,13 @@ export async function makeQuiz(req, { text, image, level, count }) {
       if (quiz) return { ...quiz, model };
       lastError = new Error("The AI's answer couldn't be read. Please try again.");
     } catch (e) {
-      if (e.status === 422 || e.status === 401 || e.status === 403) throw e;
+      if (e.status === 422) throw e;
+      if (e.status === 401 || e.status === 403) {
+        console.error("AI auth error:", e.message);
+        const err = new Error("The AI service isn't connected yet. Please try again later.");
+        err.status = 503;
+        throw err;
+      }
       lastError = e; // try the next model
     }
   }
@@ -218,7 +225,7 @@ export default async function handler(req, res) {
     const status = e.status === 402 ? 503 : (e.status && e.status < 600 ? e.status : 500);
     const message = e.status === 402
       ? "Today's free quiz limit is used up. Please try again tomorrow."
-      : (status >= 500 ? "Couldn't make a quiz right now. Please try again in a minute." : e.message);
+      : (status === 503 ? e.message : status >= 500 ? "Couldn't make a quiz right now. Please try again in a minute." : e.message);
     return res.status(status).json({ error: message });
   }
 }
