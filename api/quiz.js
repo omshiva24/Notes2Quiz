@@ -7,7 +7,6 @@
 // AI_GATEWAY_API_KEY or GEMINI_API_KEY can be set instead.
 
 const GATEWAY_URL = "https://ai-gateway.vercel.sh/v1/chat/completions";
-const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
 const MODELS = (process.env.QUIZ_MODELS ||
   "google/gemini-3.1-flash-lite,google/gemini-2.5-flash,openai/gpt-5-mini")
   .split(",").map((m) => m.trim()).filter(Boolean);
@@ -138,9 +137,48 @@ async function callModel({ url, token, model, messages, timeoutMs }) {
   return body?.choices?.[0]?.message?.content || "";
 }
 
+// Google's native Gemini API. New AI Studio keys (auth keys) are sent in the x-goog-api-key header.
+async function callGemini({ token, model, messages, timeoutMs }) {
+  const system = messages.find((m) => m.role === "system")?.content || "";
+  const user = messages.find((m) => m.role === "user")?.content;
+  const items = typeof user === "string" ? [{ type: "text", text: user }] : (user || []);
+  const parts = items.map((it) => {
+    if (it.type === "text") return { text: it.text };
+    const m = /^data:(image\/[a-z+.-]+);base64,(.*)$/i.exec(it.image_url?.url || "");
+    return m ? { inline_data: { mime_type: m[1], data: m[2] } } : { text: "" };
+  });
+  const generationConfig = { temperature: 0.4, responseMimeType: system ? "application/json" : "text/plain" };
+  if (/^gemini-3/.test(model)) generationConfig.thinkingConfig = { thinkingLevel: "low" };
+  const body = { contents: [{ role: "user", parts }], generationConfig };
+  if (system) body.systemInstruction = { parts: [{ text: system }] };
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  let r;
+  try {
+    r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+      method: "POST", signal: ctrl.signal,
+      headers: { "Content-Type": "application/json", "x-goog-api-key": token },
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    const err = new Error(e.name === "AbortError" ? `${model} took too long` : `Network error: ${e.message}`);
+    err.status = 504;
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const err = new Error(data?.error?.message || `AI service error ${r.status}`);
+    err.status = r.status;
+    throw err;
+  }
+  return (data?.candidates?.[0]?.content?.parts || []).map((p) => p.text || "").join("");
+}
+
 function authFor(req) {
   if (process.env.GEMINI_API_KEY) {
-    return { url: GEMINI_URL, token: process.env.GEMINI_API_KEY,
+    return { native: true, token: process.env.GEMINI_API_KEY,
       models: (process.env.GEMINI_MODELS || "gemini-3.8-flash,gemini-3.1-flash-lite,gemini-2.5-flash").split(",").map((m) => m.trim()) };
   }
   const token = process.env.AI_GATEWAY_API_KEY ||
@@ -173,7 +211,8 @@ export async function makeQuiz(req, { text, image, level, count }) {
     const left = 55_000 - (Date.now() - started);
     if (left < 8_000) break;
     try {
-      const content = await callModel({ url: auth.url, token: auth.token, model, messages, timeoutMs: Math.min(32_000, left - 2_000) });
+      const call = auth.native ? callGemini : callModel;
+      const content = await call({ url: auth.url, token: auth.token, model, messages, timeoutMs: Math.min(32_000, left - 2_000) });
       const data = parseJson(content);
       if (data?.error === "not_enough_notes") {
         const e = new Error("These notes are too short to make a good quiz. Add a page or two more.");
@@ -213,7 +252,8 @@ export default async function handler(req, res) {
         for (const model of auth.models) {
           const t0 = Date.now();
           try {
-            const txt = await callModel({ url: auth.url, token: auth.token, model, timeoutMs: 14_000,
+            const call = auth.native ? callGemini : callModel;
+            const txt = await call({ url: auth.url, token: auth.token, model, timeoutMs: 14_000,
               messages: [{ role: "user", content: "Reply with the single word OK." }] });
             out.push({ model, ok: true, ms: Date.now() - t0, reply: txt.slice(0, 20) });
           } catch (e) {
