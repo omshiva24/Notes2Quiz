@@ -46,7 +46,7 @@ function rateLimited(ip) {
   return recent.length > 15;
 }
 
-function systemPrompt(count, level) {
+function systemPrompt(count, level, part = false) {
   return [
     "You are a careful exam setter for college students.",
     `Write exactly ${count} multiple-choice questions using ONLY facts found in the student's notes.`,
@@ -56,7 +56,9 @@ function systemPrompt(count, level) {
     "Do not use 'All of the above' or 'None of the above'. Cover different parts of the notes; no two questions test the same fact.",
     "explanation: one short sentence saying why the answer is right, based on the notes.",
     "topic: the 2-4 word sub-topic of the notes this question tests (used for a 'revise these topics' list).",
-    'If the notes are too short or not study material, return {"error":"not_enough_notes"}.',
+    part
+      ? "These notes are one section of the student's longer notes. Always write the questions from this section."
+      : 'If the notes are too short or not study material, return {"error":"not_enough_notes"}.',
     "Reply with JSON only, no markdown, in this shape:",
     '{"title":"short name of the notes topic","questions":[{"question":"...","options":["...","...","...","..."],"answer":0,"explanation":"...","topic":"..."}]}',
   ].join("\n");
@@ -222,15 +224,16 @@ function splitNotes(text, k) {
 }
 
 // One AI request for n questions, trying each model until one answers in time.
-async function askBatch(auth, { text, image, level, n, deadline }) {
+async function askBatch(auth, { text, image, level, n, deadline, part = false, avoid = [] }) {
   const userContent = [];
-  const intro = `Difficulty: ${level}. Number of questions: ${n}.`;
+  let intro = `Difficulty: ${level}. Number of questions: ${n}.`;
+  if (avoid.length) intro += `\nThese questions are already in the quiz. Do not repeat them or test the same facts:\n- ${avoid.join("\n- ")}`;
   if (text) userContent.push({ type: "text", text: `${intro}\n\nSTUDENT NOTES:\n${text}` });
   if (image) {
     if (!text) userContent.push({ type: "text", text: `${intro}\n\nThe student's notes are in this photo. Read them carefully and quiz only on what is written.` });
     userContent.push({ type: "image_url", image_url: { url: image } });
   }
-  const messages = [{ role: "system", content: systemPrompt(n, level) }, { role: "user", content: userContent }];
+  const messages = [{ role: "system", content: systemPrompt(n, level, part) }, { role: "user", content: userContent }];
   let lastError;
   const attempts = auth.models.flatMap((m) => [m, m]); // a "busy" model gets one more try
   let skip = null;
@@ -244,6 +247,7 @@ async function askBatch(auth, { text, image, level, n, deadline }) {
       const content = await call({ url: auth.url, token: auth.token, model, messages, timeoutMs: Math.min(45_000, left - 2_000) });
       const data = parseJson(content);
       if (data?.error === "not_enough_notes") {
+        console.log(`Model ${model}: notes too short (${String(text || "").length} chars)`);
         const e = new Error("These notes are too short to make a good quiz. Add a page or two more.");
         e.status = 422;
         throw e;
@@ -288,19 +292,35 @@ export async function makeQuiz(req, { text, image, level, count }) {
 
   const parts = splitNotes(text, k);
   const sizes = parts.map((_, i) => Math.floor(count / parts.length) + (i < count % parts.length ? 1 : 0));
-  const results = await Promise.allSettled(parts.map((part, i) => askBatch(auth, { text: part, level, n: sizes[i], deadline })));
+  const results = await Promise.allSettled(parts.map((part, i) => askBatch(auth, { text: part, level, n: sizes[i], deadline, part: true })));
   const ok = results.filter((r) => r.status === "fulfilled").map((r) => r.value);
   const seen = new Set();
   const questions = [];
-  for (const q of ok.flatMap((r) => r.questions)) {
-    const key = q.question.toLowerCase();
-    if (!seen.has(key)) { seen.add(key); questions.push(q); }
+  const add = (list) => {
+    for (const q of list) {
+      const key = q.question.toLowerCase();
+      if (!seen.has(key) && questions.length < count) { seen.add(key); questions.push(q); }
+    }
+  };
+  add(ok.flatMap((r) => r.questions));
+
+  // A part came back short or failed: top up from the full notes so the student gets every question asked for.
+  if (questions.length < count && deadline - Date.now() > 15_000) {
+    try {
+      const extra = await askBatch(auth, { text, level, n: count - questions.length, deadline,
+        avoid: questions.map((q) => q.question) });
+      add(extra.questions);
+      if (!ok.length) ok.push(extra);
+      console.log(`Topped up to ${questions.length}/${count} questions`);
+    } catch (e) {
+      console.error("Top-up failed:", e.message);
+    }
   }
   if (questions.length < 3) {
     const failed = results.find((r) => r.status === "rejected");
     throw failed ? failed.reason : new Error("Couldn't make a quiz right now. Please try again.");
   }
-  return { title: ok[0].title, questions: questions.slice(0, count), model: ok[0].model };
+  return { title: ok[0].title, questions, model: ok[0].model };
 }
 
 export default async function handler(req, res) {
