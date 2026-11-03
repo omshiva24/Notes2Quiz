@@ -43,19 +43,19 @@ Browser (HTML + CSS + JavaScript)
   ├─ reads text / PDF (pdf.js) / photo (resized in the browser)
   └─ POST /api/quiz  ──►  Vercel Function (api/quiz.js)
                              ├─ builds a strict exam-setter prompt
-                             ├─ calls Gemini through Vercel AI Gateway (server side, no key in the browser)
+                             ├─ splits long notes into parts and asks Google Gemini in parallel (key stays on the server)
                              ├─ checks every question: 4 unique options, one valid answer, no repeats
                              └─ shuffles options so the answer isn't always "A"
 ```
 
 - **Front end:** plain HTML, CSS and JavaScript — no framework, loads fast on low-end phones.
 - **Back end:** one serverless function on Vercel, with a per-visitor rate limit.
-- **AI:** Google Gemini via Vercel AI Gateway, with automatic fallback to a second model if the first fails.
+- **AI:** Google Gemini API, with retries and automatic fallback to other Gemini models when one is busy. If a part of the notes comes back short, it tops up from the full notes so you always get the number of questions you asked for.
 - **Security:** the AI key never reaches the browser; uploads are size-limited; all AI text is rendered as plain text, never HTML.
 
 ## Tech stack
 
-HTML · CSS · JavaScript · Node.js (Vercel Functions) · Vercel AI Gateway · Google Gemini · pdf.js · Git & GitHub · Vercel
+HTML · CSS · JavaScript · Node.js (Vercel Functions) · Google Gemini API · pdf.js · Git & GitHub · Vercel
 
 ## Author
 

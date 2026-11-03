@@ -3,8 +3,8 @@
 //
 // Turns a student's notes (text or a photo) into multiple-choice questions.
 // The AI call runs on the server, so no API key ever reaches the browser.
-// On Vercel it authenticates to Vercel AI Gateway with the project's OIDC token;
-// AI_GATEWAY_API_KEY or GEMINI_API_KEY can be set instead.
+// It uses the Google Gemini API when GEMINI_API_KEY is set (production),
+// otherwise Vercel AI Gateway.
 
 const GATEWAY_URL = "https://ai-gateway.vercel.sh/v1/chat/completions";
 const MODELS = (process.env.QUIZ_MODELS ||
