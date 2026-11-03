@@ -80,16 +80,32 @@ function shuffle(arr) {
   return a;
 }
 
+// Read the answer however the AI wrote it: 0-3, "2", "C", "C) Router" or the option text itself.
+function answerIndex(q, options) {
+  const raw = q.answer ?? q.answerIndex ?? q.correct ?? q.correct_answer ?? q.correctAnswer;
+  if (typeof raw === "number") return raw;
+  const v = String(raw ?? "").trim();
+  if (/^[0-3]$/.test(v)) return Number(v);
+  const letter = /^([A-Da-d])(?:[).:\s]|$)/.exec(v);
+  if (letter) return letter[1].toUpperCase().charCodeAt(0) - 65;
+  const exact = options.findIndex((o) => o.toLowerCase() === v.toLowerCase());
+  return exact;
+}
+const optionText = (o) => String((o && typeof o === "object" ? (o.text ?? o.option ?? o.value) : o) ?? "")
+  .replace(/^\s*[A-Da-d][).:]\s+/, "").trim();
+
 // Keep only well-formed questions; shuffle options so the answer isn't always "A".
 function clean(data, count) {
-  if (!data || !Array.isArray(data.questions)) return null;
+  const list = Array.isArray(data) ? data : data?.questions;
+  if (!Array.isArray(list)) return null;
   const seen = new Set();
   const out = [];
-  for (const q of data.questions) {
+  for (const q of list) {
     if (!q || typeof q.question !== "string" || !Array.isArray(q.options)) continue;
-    const options = q.options.map((o) => String(o ?? "").trim()).filter(Boolean);
-    const answer = Number(q.answer);
-    if (options.length !== 4 || !(answer >= 0 && answer <= 3)) continue;
+    const options = q.options.map(optionText).filter(Boolean);
+    if (options.length !== 4) continue;
+    const answer = answerIndex(q, options);
+    if (!(answer >= 0 && answer <= 3)) continue;
     if (new Set(options.map((o) => o.toLowerCase())).size !== 4) continue;
     const key = q.question.trim().toLowerCase();
     if (seen.has(key)) continue;
@@ -105,7 +121,7 @@ function clean(data, count) {
     if (out.length === count) break;
   }
   return out.length >= Math.min(3, count)
-    ? { title: String(data.title || "Your notes").slice(0, 80), questions: out }
+    ? { title: String(data?.title || "Your notes").slice(0, 80), questions: out }
     : null;
 }
 
@@ -234,6 +250,7 @@ async function askBatch(auth, { text, image, level, n, deadline }) {
       }
       const quiz = clean(data, n);
       console.log(`Model ${model}: ${quiz ? quiz.questions.length : 0}/${n} good questions in ${Date.now() - t0} ms`);
+      if (!quiz) console.log("Unusable AI reply (start):", String(content).slice(0, 400));
       if (quiz) return { ...quiz, model };
       lastError = new Error("The AI's answer couldn't be read. Please try again.");
     } catch (e) {
